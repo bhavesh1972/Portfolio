@@ -761,6 +761,11 @@
         /**
          * Main function triggered by the button click.
          */
+        // ----------------------------------------------------------------------
+        // Step 3: The JavaScript (Frontend) now talks to the Python (Backend)
+        // ----------------------------------------------------------------------
+        const PYTHON_API_URL = 'http://127.0.0.1:5000/unify'; 
+
         const startUnification = async () => {
             if (isProcessing) return;
             isProcessing = true;
@@ -768,50 +773,82 @@
             
             allDataFrames = [];
             document.getElementById('status-log').innerHTML = ''; // Clear log
+            
+            logStatus('Starting file parsing...', 'info');
 
-            try {
-                logStatus('Starting file parsing...');
-                const activeFiles = uploadedFiles.filter(f => f && f.sourceType !== 'SKIP');
-                
-                for (const file of activeFiles) {
-                    const { headers, data } = parseFile(file.content, file.fileFormat);
+            // 1. Preparation and Data Parsing (Still done in JavaScript)
+            const activeFiles = uploadedFiles.filter(f => f && f.sourceType !== 'SKIP');
+            
+            let filesToSend = [];
+            for (const file of activeFiles) {
+                try {
+                    // Use the existing JavaScript parsing logic to convert raw file content 
+                    // into a list of objects (JSON format)
+                    const { headers, data } = parseFile(file.content, file.fileFormat); 
                     
                     if (data.length > 0) {
-                        allDataFrames.push({ 
-                            name: file.file.name, 
-                            sourceType: file.sourceType, 
-                            headers: headers, 
-                            data: data 
+                        filesToSend.push({ 
+                            sourceType: file.sourceType,
+                            data: data // This list of objects will be sent to Pandas
                         });
                         logStatus(`Parsed ${file.file.name} successfully (${data.length} rows).`, 'success');
                     } else {
                         logStatus(`File ${file.file.name} resulted in 0 rows or failed parsing. Skipping.`, 'error');
                     }
+                } catch (e) {
+                    logStatus(`Error parsing file ${file.file.name}: ${e.message}`, 'error');
                 }
-                
-                if (allDataFrames.length === 0) {
-                    logStatus('No successfully parsed data frames to unify.', 'error');
-                    isProcessing = false;
-                    updateUnifyButtonState();
-                    return;
+            }
+            
+            if (filesToSend.length === 0) {
+                logStatus('No successfully parsed data to send to Python server.', 'error');
+                isProcessing = false;
+                updateUnifyButtonState();
+                return;
+            }
+
+            logStatus('Sending prepared data to Python Flask API for processing...', 'info');
+
+            // 2. API Call: Send the data to the Python server (app.py)
+            try {
+                const response = await fetch(PYTHON_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ files: filesToSend })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Unknown API error.');
                 }
 
-                // Run the unification pipeline
-                const unifiedData = runUnificationPipeline();
+                // 3. Receive the unified data back from Python
+                const unifiedData = result.data; 
+                
+                logStatus('PIPELINE SUCCESS: Unified data received from Python server!', 'success');
                 
                 if (unifiedData && unifiedData.length > 0) {
                     const formatId = document.getElementById('output-format').value;
-                    exportUnifiedData(unifiedData, formatId);
-                } 
+                    exportUnifiedData(unifiedData, formatId); // Use existing JS download function
+                } else {
+                    logStatus('Python processed data successfully, but returned an empty dataset.', 'error');
+                }
 
             } catch (error) {
-                logStatus(`CRITICAL ERROR in pipeline: ${error.message}`, 'error');
-                console.error('CRITICAL ERROR:', error);
+                // This error will trigger if the Python server (app.py) is not running!
+                logStatus(`CRITICAL ERROR: Could not connect to Python server. Is 'app.py' running? Details: ${error.message}`, 'error');
+                console.error('CRITICAL API ERROR:', error);
             } finally {
                 isProcessing = false;
                 updateUnifyButtonState();
             }
         };
+        // ----------------------------------------------------------------------
+        // END of startUnification function replacement
+        // ----------------------------------------------------------------------
 
         /**
          * Initialization function to set up the UI.
