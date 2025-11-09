@@ -82,8 +82,6 @@
 
         /**
          * Utility to map file names to source types for the ETL
-         * @param {string} filename The name of the file.
-         * @returns {string} The assigned source type.
          */
         const getSourceType = (filename) => {
             const lowerName = filename.toLowerCase();
@@ -219,48 +217,7 @@
         };
 
         // **********************************************************************
-        // ** CRITICAL FIX: JAVASCRIPT DATE STANDARDIZATION **
-        // **********************************************************************
-
-        /**
-         * Pre-processes date fields in transaction data to a standardized ISO format (YYYY-MM-DDT...).
-         * This forces a reliable date format that the Python ETL can consistently parse,
-         * resolving the long-standing "Can only use .dt accessor" error.
-         * @param {Array<Object>} data The array of transaction records.
-         * @returns {Array<Object>} The array with standardized date strings.
-         */
-        const standardizeDates = (data) => {
-            const dateColumns = ['Order_Date', 'Invoice_Date']; 
-            return data.map(record => {
-                const newRecord = { ...record };
-                
-                // Identify the date column in the record
-                const dateKey = Object.keys(newRecord).find(key => 
-                    dateColumns.includes(key) || 
-                    (key.toLowerCase().includes('date') && key !== 'Account_Creation_Date') // Exclude dim date
-                );
-
-                if (dateKey && newRecord[dateKey]) {
-                    const dateValue = newRecord[dateKey];
-                    // Clean up common international date formats before parsing
-                    const cleanedValue = dateValue.replace(/-/g, '/'); // Use slashes for better New Date() parsing
-
-                    const date = new Date(cleanedValue);
-                    if (!isNaN(date)) {
-                        // Convert to ISO string (YYYY-MM-DDTHH:MM:SS.000Z)
-                        newRecord[dateKey] = date.toISOString(); 
-                    } else {
-                        // Log a warning if a specific date failed to parse
-                        console.warn(`Date standardization failed for value: ${dateValue}`);
-                    }
-                }
-                return newRecord;
-            });
-        };
-
-
-        // **********************************************************************
-        // ** MAIN PIPELINE FUNCTION (Modified to use standardizeDates) **
+        // ** MAIN PIPELINE FUNCTION (Original) **
         // **********************************************************************
 
         const processUnifyPipeline = async () => {
@@ -286,21 +243,12 @@
                 // 2. Prepare data for Python API
                 logStatus('Sending prepared data to Python Flask API for processing...');
                 
-                // --- CRITICAL CHANGE: Apply date standardization here ---
                 const dataToSend = {
-                    files: parsedFiles.map((file) => {
-                        let data = file.data;
-                        if (file.sourceType === 'CRM_SALES' || file.sourceType === 'FINANCE_LEDGER') {
-                            // Apply JS pre-processing to force ISO date format
-                            data = standardizeDates(file.data);
-                        }
-                        return {
-                            sourceType: file.sourceType,
-                            data: data
-                        };
-                    })
+                    files: parsedFiles.map((file, index) => ({
+                        sourceType: file.sourceType,
+                        data: file.data 
+                    }))
                 };
-                // --- END CRITICAL CHANGE ---
 
                 // 3. Call Python API
                 const response = await fetch(PYTHON_API_URL, {
@@ -330,7 +278,7 @@
                 }
 
             } catch (error) {
-                logStatus(`CRITICAL ERROR in pipeline: ${error.message}`, 'error');
+                logStatus(`CRITICAL ERROR in pipeline: Python ETL failed: ${error.message}`, 'error');
                 console.error('CRITICAL ERROR:', error);
             } finally {
                 isProcessing = false;
@@ -340,7 +288,7 @@
         };
 
         // **********************************************************************
-        // ** CSV/JSON EXPORT FUNCTIONS (No Change Required) **
+        // ** CSV/JSON EXPORT FUNCTIONS **
         // **********************************************************************
 
         const convertToCsv = (data) => {
