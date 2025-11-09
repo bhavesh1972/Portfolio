@@ -28,827 +28,365 @@
             background-color: #4338ca;
         }
         .btn-disabled {
-            opacity: 0.5;
+            opacity: 0.6;
             cursor: not-allowed;
-        }
-        .file-row {
-            display: grid;
-            grid-template-columns: 20px 1fr repeat(2, minmax(0, 160px));
-            gap: 1rem;
-            align-items: center;
-        }
-        @media (max-width: 1024px) {
-            .file-row {
-                grid-template-columns: 1fr;
-            }
-            .file-row > span:first-child { display: none; } /* Hide index on small screens */
         }
     </style>
 </head>
-<body class="p-4 md:p-8">
+<body class="p-4 sm:p-8">
 
-    <div class="max-w-6xl mx-auto">
-        <header class="text-center mb-8">
-            <h1 class="text-3xl font-extrabold text-indigo-700">Universal Data Unifier (ETL)</h1>
-            <p class="text-gray-600 mt-2">Upload up to 10 source files, classify their **format** and **source type**, and generate an analytics-ready output.</p>
+    <div class="max-w-4xl mx-auto">
+        <header class="text-center mb-10">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-2">Universal Data Unification Tool</h1>
+            <p class="text-gray-500">Unify up to 3 CSV files using a Python Flask ETL backend.</p>
         </header>
 
-        <!-- Main Content Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <!-- File Upload Column (Left/Top) -->
-            <div class="lg:col-span-2 card p-6 rounded-xl">
-                <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">1. Upload, Format, & Source Classification (Max 10)</h2>
+        <div class="card p-6 sm:p-10 rounded-xl">
+            <h2 class="text-xl font-semibold mb-6 text-gray-800">1. Upload Source Files</h2>
+            <div id="file-upload-container" class="space-y-4 mb-8">
+                </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0 sm:space-x-4">
+                <div class="flex items-center space-x-4 w-full sm:w-auto">
+                    <label for="output-format" class="text-gray-700">Output Format:</label>
+                    <select id="output-format" class="border border-gray-300 rounded-md p-2 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        </select>
+                </div>
                 
-                <div class="hidden md:grid grid-cols-3 gap-4 font-bold text-sm text-gray-700 mb-2 pl-12 pr-4">
-                    <span>File Input</span>
-                    <span>File Format</span>
-                    <span>Source Type</span>
-                </div>
-
-                <div id="file-upload-container" class="space-y-4">
-                    <!-- Dynamic File Inputs will go here -->
-                </div>
+                <button id="unify-button" 
+                        onclick="processUnifyPipeline()" 
+                        class="px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 ease-in-out w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled>
+                    <span id="button-text">Unify & Download Data</span>
+                </button>
             </div>
+        </div>
 
-            <!-- Output Configuration & Status Column (Right/Side) -->
-            <div class="lg:col-span-1 space-y-6">
-                <!-- Status Card -->
-                <div class="card p-6 rounded-xl h-fit">
-                    <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">Processing Status</h2>
-                    <div id="status-log" class="text-sm space-y-1 h-36 overflow-y-auto bg-gray-50 p-3 rounded-lg border">
-                        <p class="text-gray-500">Ready to start unification...</p>
-                    </div>
+        <div class="card mt-8 p-6 rounded-xl">
+            <h2 class="text-xl font-semibold mb-4 text-gray-800">2. Processing Log</h2>
+            <div id="log-output" class="bg-gray-50 p-4 rounded-lg h-40 overflow-y-auto text-sm space-y-1">
                 </div>
-
-                <!-- Output Configuration Card -->
-                <div class="card p-6 rounded-xl h-fit">
-                    <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">2. Generate Unified Output</h2>
-
-                    <label for="output-format" class="block text-sm font-medium text-gray-700 mb-2">Select Output File Type</label>
-                    <select id="output-format" class="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 mb-4">
-                    </select>
-
-                    <button id="unify-button" onclick="startUnification()"
-                            class="w-full px-4 py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed">
-                        <span id="unify-button-text">Unify & Download Data</span>
-                    </button>
-                    <p class="text-xs text-center text-gray-500 mt-2">The output will be a single, analytics-ready file.</p>
-                </div>
-            </div>
         </div>
     </div>
 
     <script>
-        // --- CONSTANTS AND CONFIGURATION ---
-
-        const MAX_FILES = 10;
-        
-        // Define the file types the application supports/recognizes
-        const FILE_FORMATS = {
-            'CSV': { name: 'CSV (Comma Delimited)', accept: '.csv', delimiter: ',' },
-            'TSV': { name: 'TSV (Tab Delimited)', accept: '.tsv,.txt', delimiter: '\t' },
-            'JSON': { name: 'JSON', accept: '.json', delimiter: null },
-            'TXT': { name: 'TXT (General Text)', accept: '.txt', delimiter: ',' }, // Default to comma for TXT, user expects flat file
-            'XLSX': { name: 'Excel Workbook (.xlsx) [Text-Only Warning]', accept: '.xlsx', unsupported: true },
-            'XLS': { name: 'Legacy Excel (.xls) [Text-Only Warning]', accept: '.xls', unsupported: true },
-        };
-
-        // Define the primary file source types (CRM, Finance, etc.)
-        const SOURCE_TYPES = {
-            'SKIP': 'Do Not Process (Skip)',
-            'CRM_SALES': 'CRM Sales Transactions (Revenue)',
-            'FINANCE_LEDGER': 'Finance Ledger (Cost/Expense)',
-            'CUSTOMER_DIMENSION': 'Customer Dimension/Profile',
-        };
-
-        // Standardized column names and their expected source columns for MAPPING
-        const SCHEMA_MAPS = {
-            CRM_SALES: {
-                Source: 'CRM',
-                ID_Field: 'Transaction_ID',
-                Customer_ID_Field: 'Customer_ID',
-                Date_Field: 'Order_Date',
-                Amount_Field: 'Amount_USD',
-                Type: 'Sale',
-                Flag: 'Revenue',
-                Region_Field: 'Region',
-                Category_Field: 'Product_Category',
-                Rep_Field: 'Sales_Rep',
-            },
-            FINANCE_LEDGER: {
-                Source: 'Finance',
-                ID_Field: 'Invoice_ID',
-                Customer_ID_Field: 'Invoice_Reference',
-                Date_Field: 'Invoice_Date',
-                Amount_Field: 'Total_Charged',
-                Type: 'Expense/Invoice',
-                Flag: 'Cost/Expense',
-                Vendor_Field: 'Vendor_Name',
-                Dept_Field: 'Associated_Department',
-            },
-            CUSTOMER_DIMENSION: {
-                Customer_ID_Field: 'Customer_ID',
-                Name_Field: 'Customer_Name',
-                Industry_Field: 'Industry',
-                Segment_Field: 'Segment',
-                State_Field: 'State',
-                LTV_Field: 'Lifetime_Value_Estimate',
-                Creation_Date_Field: 'Account_Creation_Date',
-            }
-        };
-
-        // Output formats for download
-        const OUTPUT_FORMATS = [
-            { id: 'csv', name: 'CSV (Comma Separated Values)' },
-            { id: 'json', name: 'JSON (JavaScript Object Notation)' },
-            { id: 'tsv', name: 'TSV (Tab Separated Values)' },
-            { id: 'xml', name: 'XML (Extensible Markup Language)' },
-            { id: 'html', name: 'HTML Table' },
-            { id: 'sql', name: 'SQL INSERT Statements' },
-            { id: 'yaml', name: 'YAML' },
-            { id: 'txt', name: 'Plain Text (Pipe Separated)' },
-            { id: 'md', name: 'Markdown Table' },
-        ];
-        
-        // Global State
-        let uploadedFiles = [];
-        let allDataFrames = []; 
+        const MAX_FILES = 3;
+        const PYTHON_API_URL = 'http://127.0.0.1:5000/unify';
+        let uploadedFiles = []; // Stores { file, fileType, sourceType } for each slot
         let isProcessing = false;
 
-        // --- UTILITY FUNCTIONS ---
-        
-        /**
-         * Parses a text string (CSV, TSV, TXT) into an array of objects.
-         */
-        const parseDelimitedText = (text, delimiter) => {
-            const lines = text.trim().split('\n').filter(line => line.trim() !== '');
-            if (lines.length === 0) return { headers: [], data: [] };
-            
-            // Basic header parsing
-            const headers = lines[0].split(delimiter).map(h => h.trim().replace(/['"]+/g, ''));
-            const data = [];
+        const OUTPUT_FORMATS = [
+            { id: 'csv', name: 'CSV' },
+            { id: 'json', name: 'JSON' }
+        ];
 
-            for (let i = 1; i < lines.length; i++) {
-                const values = lines[i].split(delimiter); 
-                if (values.length !== headers.length) continue; 
-                
-                const row = {};
-                headers.forEach((header, index) => {
-                    row[header] = values[index].trim().replace(/['"]+/g, '');
-                });
-                data.push(row);
+        /**
+         * Utility to map file names to source types for the ETL
+         * @param {string} filename The name of the file.
+         * @returns {string} The assigned source type.
+         */
+        const getSourceType = (filename) => {
+            const lowerName = filename.toLowerCase();
+            if (lowerName.includes('crm') || lowerName.includes('sales')) {
+                return 'CRM_SALES';
+            } else if (lowerName.includes('finance') || lowerName.includes('ledger')) {
+                return 'FINANCE_LEDGER';
+            } else if (lowerName.includes('customer') || lowerName.includes('dim')) {
+                return 'CUSTOMER_DIMENSION';
             }
-            return { headers, data };
+            return 'OTHER';
         };
 
         /**
-         * Main file parsing function based on selected format.
+         * Simple log status function
          */
-        const parseFile = (fileContent, fileFormatId) => {
-            const format = FILE_FORMATS[fileFormatId];
-            
-            if (format.unsupported) {
-                logStatus(`[WARNING] Cannot fully parse ${fileFormatId}. Treat as text, which may fail for binary formats like Excel.`, 'warn');
-                // For Excel, we will try to parse it as CSV/TSV which often fails but is the only option.
-            }
-            
-            if (fileFormatId === 'JSON') {
-                try {
-                    const parsed = JSON.parse(fileContent);
-                    // Assume array of objects structure for JSON
-                    if (Array.isArray(parsed) && parsed.every(item => typeof item === 'object' && item !== null)) {
-                        const headers = parsed.length > 0 ? Object.keys(parsed[0]) : [];
-                        return { headers, data: parsed };
-                    }
-                    logStatus('JSON file is not an array of objects. Skipping.', 'error');
-                    return { headers: [], data: [] };
-                } catch (e) {
-                    logStatus(`Error parsing JSON: ${e.message}. Skipping file.`, 'error');
-                    return { headers: [], data: [] };
-                }
-            }
-
-            // Handles CSV, TSV, TXT, and unsupported formats (by attempting text parse)
-            const delimiter = format.delimiter || ','; // Default to comma if not specified
-            return parseDelimitedText(fileContent, delimiter);
-        };
-
-        /** Logs messages to the status log area. */
         const logStatus = (message, type = 'info') => {
-            const logElement = document.getElementById('status-log');
-            const p = document.createElement('p');
-            p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-            
-            let color = 'text-gray-700';
-            if (type === 'success') color = 'text-green-600 font-medium';
-            if (type === 'error') color = 'text-red-600 font-bold';
-            if (type === 'warn') color = 'text-yellow-600';
+            const logElement = document.getElementById('log-output');
+            const entry = document.createElement('p');
+            const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+            entry.textContent = `[${timestamp}] ${message}`;
 
-            p.className = `text-xs ${color}`;
-            logElement.appendChild(p);
-            logElement.scrollTop = logElement.scrollHeight; 
-        };
-
-        /** Standardizes date into YYYY-MM-DD format. (Same as v1) */
-        const standardizeDate = (dateStr) => {
-            if (!dateStr || dateStr.toLowerCase() === 'nan' || dateStr.toLowerCase() === 'null') return null;
-            let date = new Date(dateStr);
-            if (isNaN(date)) {
-                const parts = dateStr.split(/[-/]/);
-                if (parts.length === 3) {
-                    const [p1, p2, p3] = parts.map(Number);
-                    if (p1 > 12) { // Assumes DD-MM-YYYY or similar
-                        date = new Date(p3, p2 - 1, p1); 
-                    } else {
-                        date = new Date(p3, p1 - 1, p2); // Assumes MM/DD/YYYY or similar
-                    }
-                }
+            if (type === 'error' || type === 'critical') {
+                entry.className = 'text-red-600 font-semibold';
+            } else if (type === 'success') {
+                entry.className = 'text-green-600 font-semibold';
+            } else {
+                entry.className = 'text-gray-700';
             }
 
-            if (isNaN(date)) return null;
-            return date.toISOString().split('T')[0];
+            logElement.appendChild(entry);
+            logElement.scrollTop = logElement.scrollHeight; // Scroll to bottom
         };
 
-        /** Maps Invoice Reference to Customer ID. (Same as v1) */
-        const mapReferenceToCustomerID = (ref) => {
-            if (!ref) return 'Unknown_ID';
-            if (ref.startsWith('CUST_')) return ref;
-            // In a real app, this would use a lookup table, but here we assume a structure or return the ref.
-            return ref;
-        };
-        
-        // --- DATA PROCESSING LOGIC (The ETL Engine) ---
-
-        /** (Same as v1, but uses SOURCE_TYPES) */
-        const processSourceFile = (df, sourceTypeId) => {
-            const output = [];
-            const customerDimensionMap = new Map();
-            const map = SCHEMA_MAPS[sourceTypeId];
-
-            if (sourceTypeId === 'CUSTOMER_DIMENSION') {
-                logStatus(`Processing ${df.name} as Customer Dimension...`, 'info');
-                df.data.forEach(row => {
-                    const id = row[map.Customer_ID_Field];
-                    if (id) {
-                        customerDimensionMap.set(id, {
-                            Customer_Name: row[map.Name_Field] || 'Unknown',
-                            Industry: row[map.Industry_Field] || 'Unknown',
-                            Segment: row[map.Segment_Field] || 'Unknown',
-                            State: row[map.State_Field] || 'Unknown',
-                            LTV_Estimate: parseFloat(row[map.LTV_Field]) || 0,
-                            Account_Creation_Date: standardizeDate(row[map.Creation_Date_Field]),
-                        });
-                    }
-                });
-                return { isDimension: true, data: customerDimensionMap };
-            }
-
-            logStatus(`Processing ${df.name} as ${sourceTypeId} transactions...`, 'info');
-            
-            df.data.forEach(row => {
-                let customerID = row[map.Customer_ID_Field];
-                
-                if (sourceTypeId === 'FINANCE_LEDGER') {
-                    customerID = mapReferenceToCustomerID(customerID);
-                }
-
-                let amount = parseFloat(row[map.Amount_Field]) || 0;
-                
-                if (sourceTypeId === 'FINANCE_LEDGER') {
-                    amount = -Math.abs(amount);
-                }
-
-                const standardizedDate = standardizeDate(row[map.Date_Field]);
-
-                const transaction = {
-                    Source: map.Source,
-                    Source_Transaction_ID: row[map.ID_Field] || 'Unknown',
-                    Customer_ID: customerID || 'Unknown_ID',
-                    Date: standardizedDate,
-                    Amount: amount,
-                    Transaction_Type: map.Type,
-                    Profit_Flag: map.Flag,
-                    Customer_Name: 'Unknown', Industry: 'Unknown', Segment: 'Unknown', State: 'Unknown',
-                    Account_Creation_Date: 'Unknown', LTV_Estimate: 0,
-                    RFM_Recency: 0, RFM_Frequency: 0, RFM_Monetary: 0,
-                    Region: row[map.Region_Field] || 'Unknown', 
-                    Product_Category: row[map.Category_Field] || 'Unknown', 
-                    Sales_Rep: row[map.Rep_Field] || 'Unknown', 
-                    Vendor_Name: row[map.Vendor_Field] || 'Unknown', 
-                    Associated_Department: row[map.Dept_Field] || 'Unknown', 
-                    Description: row['Description'] || 'Unknown',
-                };
-                
-                if (standardizedDate && transaction.Customer_ID !== 'Unknown_ID') {
-                     output.push(transaction);
-                }
-            });
-            
-            return { isDimension: false, data: output };
-        };
-
-        /** Merge and RFM functions are identical to v1. */
-        const mergeTransactions = (transactions, customerMap) => {
-            logStatus('Merging transactions with Customer Dimension data...', 'info');
-            const mergedData = [];
-            let unknownCustomers = 0;
-
-            transactions.forEach(t => {
-                const customerProfile = customerMap.get(t.Customer_ID);
-                
-                if (customerProfile) {
-                    t.Customer_Name = customerProfile.Customer_Name;
-                    t.Industry = customerProfile.Industry;
-                    t.Segment = customerProfile.Segment;
-                    t.State = customerProfile.State;
-                    t.LTV_Estimate = customerProfile.LTV_Estimate;
-                    t.Account_Creation_Date = customerProfile.Account_Creation_Date;
-                } else {
-                    unknownCustomers++;
-                }
-                mergedData.push(t);
-            });
-            logStatus(`Merge complete. Identified ${unknownCustomers} transactions with 'Unknown' customer profiles.`, 'warn');
-            return mergedData;
-        };
-
-        const calculateRFM = (mergedData) => {
-            logStatus('Calculating RFM metrics...', 'info');
-            const now = new Date();
-            let maxRecency = 0;
-            const customerRFM = new Map();
-            
-            mergedData.forEach(t => {
-                const id = t.Customer_ID;
-                if (id === 'Unknown_ID') return; 
-
-                const transactionDate = new Date(t.Date);
-                const daysAgo = Math.floor((now - transactionDate) / (1000 * 60 * 60 * 24));
-                const amount = t.Amount;
-                const absoluteAmount = Math.abs(amount); 
-
-                let rfm = customerRFM.get(id) || { recency: Infinity, frequency: 0, monetary: 0 };
-                
-                rfm.recency = Math.min(rfm.recency, daysAgo);
-                rfm.frequency += 1;
-                rfm.monetary += absoluteAmount;
-
-                customerRFM.set(id, rfm);
-                maxRecency = Math.max(maxRecency, daysAgo);
-            });
-            
-            const finalData = mergedData.map(t => {
-                const rfm = customerRFM.get(t.Customer_ID);
-                
-                t.RFM_Recency = rfm ? rfm.recency : maxRecency + 1; 
-                t.RFM_Frequency = rfm ? rfm.frequency : 1;
-                t.RFM_Monetary = rfm ? parseFloat(rfm.monetary.toFixed(2)) : Math.abs(t.Amount);
-                
-                return t;
-            });
-            
-            logStatus('RFM Calculation complete.', 'success');
-            return finalData;
-        };
-
-        const runUnificationPipeline = () => {
-            let transactions = [];
-            let customerMap = new Map();
-            let transactionCount = 0;
-            let dimCount = 0;
-
-            logStatus('--- STARTING UNIFICATION PIPELINE ---', 'info');
-
-            for (const df of allDataFrames) {
-                if (df.sourceType === 'SKIP') continue;
-                
-                const result = processSourceFile(df, df.sourceType);
-                
-                if (result.isDimension) {
-                    customerMap = new Map([...customerMap, ...result.data]);
-                    dimCount = result.data.size;
-                } else {
-                    transactions = transactions.concat(result.data);
-                    transactionCount += result.data.length;
-                }
-            }
-
-            if (transactionCount === 0) {
-                logStatus('No transactional data found. Check file types.', 'error');
-                return null;
-            }
-            
-            logStatus(`Found ${transactionCount} transactions and ${dimCount} customer profiles.`, 'info');
-            const mergedData = mergeTransactions(transactions, customerMap);
-            const finalData = calculateRFM(mergedData);
-            
-            logStatus('PIPELINE SUCCESS: Data is unified and analytics-ready!', 'success');
-            return finalData;
-        };
-
-        // --- EXPORT FUNCTIONS ---
-        
-        const getHeaders = (data) => { return data.length === 0 ? [] : Object.keys(data[0]); };
-
-        const arrayToCSV = (data) => {
-            const headers = getHeaders(data);
-            const csvRows = [];
-            csvRows.push(headers.join(','));
-
-            for (const row of data) {
-                const values = headers.map(header => {
-                    const value = row[header] === undefined || row[header] === null ? '' : row[header];
-                    let stringValue = String(value);
-                    if (stringValue.includes(',') || stringValue.includes('"')) {
-                        stringValue = '"' + stringValue.replace(/"/g, '""') + '"';
-                    }
-                    return stringValue;
-                });
-                csvRows.push(values.join(','));
-            }
-            return csvRows.join('\n');
-        };
-
-        const arrayToTSV = (data) => {
-            const csv = arrayToCSV(data);
-            return csv.replace(/,/g, '\t');
-        };
-
-        const arrayToJSON = (data) => { return JSON.stringify(data, null, 2); };
-        
-        const arrayToXML = (data) => {
-            let xml = '<UnifiedData>\n';
-            data.forEach((row, index) => {
-                xml += `  <Transaction id="${index + 1}">\n`;
-                for (const [key, value] of Object.entries(row)) {
-                    const tag = key.replace(/[^a-zA-Z0-9]/g, '_');
-                    xml += `    <${tag}>${value}</${tag}>\n`;
-                }
-                xml += `  </Transaction>\n`;
-            });
-            xml += '</UnifiedData>';
-            return xml;
-        };
-
-        const arrayToHTML = (data) => {
-             // ... (HTML table generation logic, same as v1)
-            if (data.length === 0) return '';
-            const headers = getHeaders(data);
-            let html = '<table class="min-w-full divide-y divide-gray-200 border border-gray-300 rounded-lg overflow-hidden">\n';
-            html += '<thead class="bg-gray-50">\n<tr>';
-            headers.forEach(h => {
-                html += `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${h.replace(/_/g, ' ')}</th>`;
-            });
-            html += '</tr>\n</thead>\n';
-            html += '<tbody class="bg-white divide-y divide-gray-200">\n';
-            data.forEach(row => {
-                html += '<tr>';
-                headers.forEach(h => {
-                    html += `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${row[h] || ''}</td>`;
-                });
-                html += '</tr>\n';
-            });
-            html += '</tbody>\n</table>';
-            return html;
-        };
-
-        const arrayToSQL = (data) => {
-            // ... (SQL INSERT generation logic, same as v1)
-            if (data.length === 0) return '';
-            const headers = getHeaders(data);
-            const tableName = 'unified_transactions';
-            const sqlRows = [];
-
-            data.forEach(row => {
-                const values = headers.map(header => {
-                    const value = row[header];
-                    if (typeof value === 'number' && !isNaN(value)) {
-                        return value; 
-                    } else if (value === null || value === undefined || String(value).toUpperCase() === 'UNKNOWN') {
-                        return 'NULL'; 
-                    } else {
-                        return `'${String(value).replace(/'/g, "''")}'`;
-                    }
-                });
-                sqlRows.push(`INSERT INTO ${tableName} (${headers.join(', ')}) VALUES (${values.join(', ')});`);
-            });
-            return sqlRows.join('\n');
-        };
-
-        const arrayToYAML = (data) => {
-            // ... (YAML generation logic, same as v1)
-            const yamlLines = [];
-            data.forEach((row, index) => {
-                yamlLines.push(`- transaction_${index}:`);
-                for (const [key, value] of Object.entries(row)) {
-                    let stringValue = String(value).replace(/\n/g, ' '); 
-                    if (stringValue.includes(': ') || stringValue.startsWith('-')) {
-                        stringValue = `"${stringValue}"`; 
-                    }
-                    yamlLines.push(`  ${key}: ${stringValue}`);
-                }
-            });
-            return yamlLines.join('\n');
-        };
-        
-        const arrayToText = (data) => {
-            // ... (Pipe Separated Text generation logic, same as v1)
-            const headers = getHeaders(data);
-            const textRows = [];
-            const separator = ' | ';
-            
-            const widths = headers.map((h, i) => Math.max(h.length, ...data.map(row => String(row[h]).length)));
-
-            const headerRow = headers.map((h, i) => h.padEnd(widths[i], ' ')).join(separator);
-            textRows.push(headerRow);
-            textRows.push('='.repeat(headerRow.length)); 
-
-            data.forEach(row => {
-                const rowText = headers.map((h, i) => String(row[h]).padEnd(widths[i], ' ')).join(separator);
-                textRows.push(rowText);
-            });
-            return textRows.join('\n');
-        };
-        
-        const arrayToMarkdown = (data) => {
-            if (data.length === 0) return '';
-            const headers = getHeaders(data);
-            let md = '';
-
-            // Header Row
-            md += '| ' + headers.map(h => h.replace(/_/g, ' ')).join(' | ') + ' |\n';
-            
-            // Separator Row
-            md += '|' + headers.map(() => '---').join('|') + '|\n';
-
-            // Data Rows
-            data.forEach(row => {
-                const rowData = headers.map(h => String(row[h] || ''));
-                md += '| ' + rowData.join(' | ') + ' |\n';
-            });
-            return md;
-        };
-
-        const EXPORT_FUNCTIONS = {
-            csv: { format: arrayToCSV, mime: 'text/csv' },
-            json: { format: arrayToJSON, mime: 'application/json' },
-            tsv: { format: arrayToTSV, mime: 'text/tab-separated-values' },
-            xml: { format: arrayToXML, mime: 'application/xml' },
-            html: { format: arrayToHTML, mime: 'text/html' },
-            sql: { format: arrayToSQL, mime: 'text/plain' },
-            yaml: { format: arrayToYAML, mime: 'text/yaml' },
-            txt: { format: arrayToText, mime: 'text/plain' },
-            md: { format: arrayToMarkdown, mime: 'text/markdown' }
-        };
-        
         /**
-         * Converts the final unified array into the selected format and triggers download.
+         * Updates the state of the Unify button (enabled/disabled)
          */
-        const exportUnifiedData = (data, formatId) => {
-            if (data.length === 0) {
-                logStatus('No data to export.', 'error');
-                return;
+        const updateUnifyButtonState = () => {
+            const button = document.getElementById('unify-button');
+            const requiredFilesPresent = uploadedFiles.filter(f => f && f.file).length >= 3;
+            
+            if (requiredFilesPresent && !isProcessing) {
+                button.disabled = false;
+                button.classList.remove('btn-disabled');
+                button.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+            } else {
+                button.disabled = true;
+                button.classList.add('btn-disabled');
+                button.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
             }
-            
-            const exporter = EXPORT_FUNCTIONS[formatId];
-            const fileContent = exporter.format(data);
-            const blob = new Blob([fileContent], { type: exporter.mime + ';charset=utf-8;' });
-            
-            const outputName = OUTPUT_FORMATS.find(f => f.id === formatId)?.name || 'Data';
-            logStatus(`Successfully generated data in ${outputName} format. Starting download...`, 'success');
-
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `unified_data_product.${formatId === 'txt' ? 'txt' : formatId}`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
         };
 
-        // --- UI AND EVENT HANDLERS ---
+        /**
+         * Handles file input change events
+         */
+        const handleFileChange = (event, index) => {
+            const file = event.target.files[0];
+            if (file) {
+                if (file.type !== 'text/csv' && !file.name.toLowerCase().endsWith('.csv')) {
+                    logStatus(`Error: ${file.name} is not a CSV file.`, 'error');
+                    event.target.value = ''; // Clear the input
+                    uploadedFiles[index] = null;
+                } else {
+                    const sourceType = getSourceType(file.name);
+                    uploadedFiles[index] = { file, fileType: file.type, sourceType };
+                    logStatus(`File selected: ${file.name} (${sourceType})`);
+                }
+            } else {
+                uploadedFiles[index] = null;
+            }
+            updateUnifyButtonState();
+        };
 
         /**
-         * Generates the file input, format selection, and source selection row.
+         * Creates a file input row with label and file picker
          */
         const createFileInputRow = (index) => {
             const container = document.createElement('div');
-            container.className = 'file-row';
+            container.className = 'flex items-center space-x-4';
+            
+            const label = document.createElement('label');
+            label.textContent = `File ${index + 1} Type:`;
+            label.className = 'text-gray-700 w-32 font-medium';
 
-            // 1. Index Label
-            const label = document.createElement('span');
-            label.className = 'text-sm font-semibold text-gray-500 hidden lg:block';
-            label.textContent = `#${index + 1}`;
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.csv';
+            input.className = 'flex-grow border border-gray-300 rounded-md p-2 shadow-sm';
+            input.addEventListener('change', (e) => handleFileChange(e, index));
+
             container.appendChild(label);
-            
-            // 2. File Input
-            const fileInput = document.createElement('input');
-            fileInput.type = 'file';
-            fileInput.className = 'flex-grow p-1 text-sm text-gray-700 bg-white rounded-md col-span-1';
-            fileInput.onchange = (e) => handleFileChange(e, index);
-            container.appendChild(fileInput);
-
-            // 3. File Format Select
-            const formatSelect = document.createElement('select');
-            formatSelect.id = `file-format-select-${index}`;
-            formatSelect.className = 'w-full p-2 text-sm border border-gray-300 rounded-md bg-gray-50 focus:ring-indigo-500 focus:border-indigo-500';
-            formatSelect.onchange = (e) => handleFormatChange(e, index);
-            
-            for (const [id, config] of Object.entries(FILE_FORMATS)) {
-                const option = document.createElement('option');
-                option.value = id;
-                option.textContent = config.name;
-                formatSelect.appendChild(option);
-            }
-            container.appendChild(formatSelect);
-            
-            // 4. Source Type Select
-            const sourceSelect = document.createElement('select');
-            sourceSelect.id = `file-source-select-${index}`;
-            sourceSelect.className = 'w-full p-2 text-sm border border-gray-300 rounded-md bg-gray-50 focus:ring-indigo-500 focus:border-indigo-500';
-            sourceSelect.onchange = (e) => handleSourceChange(e, index);
-            
-            for (const [id, name] of Object.entries(SOURCE_TYPES)) {
-                const option = document.createElement('option');
-                option.value = id;
-                option.textContent = name;
-                sourceSelect.appendChild(option);
-            }
-            sourceSelect.value = 'SKIP'; // Default to skip
-            container.appendChild(sourceSelect);
-            
+            container.appendChild(input);
             return container;
         };
 
         /**
-         * Handles when a user selects a file.
+         * Reads a file and returns its content as an array of objects (CSV parsing)
          */
-        const handleFileChange = (event, index) => {
-            const file = event.target.files[0];
-            const sourceSelect = document.getElementById(`file-source-select-${index}`);
-            const formatSelect = document.getElementById(`file-format-select-${index}`);
-
-            if (file) {
+        const readFileContent = (file) => {
+            return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    // Store the raw content for later processing
-                    uploadedFiles[index] = { 
-                        index: index, 
-                        file: file, 
-                        content: e.target.result, 
-                        fileFormat: formatSelect.value,
-                        sourceType: sourceSelect.value
-                    };
-                    logStatus(`File #${index + 1} (${file.name}) loaded. Format: ${FILE_FORMATS[formatSelect.value].name}.`);
-                    updateUnifyButtonState();
+                    const content = e.target.result;
+                    try {
+                        // Simple CSV to JSON conversion (assumes first row is header)
+                        const lines = content.split('\n').filter(line => line.trim() !== '');
+                        if (lines.length === 0) {
+                            return resolve([]);
+                        }
+                        
+                        // Use a regex to correctly split CSV lines, handling commas inside quotes
+                        const headers = lines[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(h => h.trim().replace(/"/g, ''));
+                        const records = [];
+
+                        for (let i = 1; i < lines.length; i++) {
+                            const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
+                            if (values.length === headers.length) {
+                                const record = {};
+                                headers.forEach((header, index) => {
+                                    record[header] = values[index];
+                                });
+                                records.push(record);
+                            }
+                        }
+                        resolve(records);
+                    } catch (error) {
+                        reject(new Error(`Failed to parse CSV: ${error.message}`));
+                    }
                 };
-                reader.onerror = () => {
-                    logStatus(`Error reading file: ${file.name}`, 'error');
-                    uploadedFiles[index] = null;
-                    updateUnifyButtonState();
-                };
-                // Read the file as text, even Excel, as a last-resort attempt at text parsing.
-                reader.readAsText(file); 
-            } else {
-                uploadedFiles[index] = null;
-                updateUnifyButtonState();
-            }
+                reader.onerror = (e) => reject(new Error('File reading error.'));
+                reader.readAsText(file);
+            });
         };
 
-        /**
-         * Handles when a user changes the file format selection.
-         */
-        const handleFormatChange = (event, index) => {
-            const formatId = event.target.value;
-            if (uploadedFiles[index]) {
-                uploadedFiles[index].fileFormat = formatId;
-                logStatus(`File #${index + 1} format changed to ${FILE_FORMATS[formatId].name}.`);
-            }
-            updateUnifyButtonState();
-        };
-        
-        /**
-         * Handles when a user changes the source type selection.
-         */
-        const handleSourceChange = (event, index) => {
-            const sourceId = event.target.value;
-            if (uploadedFiles[index]) {
-                uploadedFiles[index].sourceType = sourceId;
-                logStatus(`File #${index + 1} source type changed to ${SOURCE_TYPES[sourceId]}.`);
-            }
-            updateUnifyButtonState();
-        };
+        // **********************************************************************
+        // ** CRITICAL FIX: JAVASCRIPT DATE STANDARDIZATION **
+        // **********************************************************************
 
         /**
-         * Enables/Disables the Unify button based on file selection rules.
+         * Pre-processes date fields in transaction data to a standardized ISO format (YYYY-MM-DDT...).
+         * This forces a reliable date format that the Python ETL can consistently parse,
+         * resolving the long-standing "Can only use .dt accessor" error.
+         * @param {Array<Object>} data The array of transaction records.
+         * @returns {Array<Object>} The array with standardized date strings.
          */
-        const updateUnifyButtonState = () => {
-            const button = document.getElementById('unify-button');
-            const buttonText = document.getElementById('unify-button-text');
-            
-            const activeFiles = uploadedFiles.filter(f => f && f.sourceType !== 'SKIP');
-            
-            // Check if at least one transactional file is present
-            const hasTransactions = activeFiles.some(f => 
-                f.sourceType === 'CRM_SALES' || f.sourceType === 'FINANCE_LEDGER'
-            );
-            
-            button.disabled = !hasTransactions || isProcessing;
-            button.className = `w-full px-4 py-3 font-bold rounded-lg transition duration-150 ease-in-out ${button.disabled ? 'bg-gray-400 text-gray-700 btn-disabled' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`;
-            buttonText.textContent = isProcessing ? 'Processing... Please wait' : 'Unify & Download Data';
+        const standardizeDates = (data) => {
+            const dateColumns = ['Order_Date', 'Invoice_Date']; 
+            return data.map(record => {
+                const newRecord = { ...record };
+                
+                // Identify the date column in the record
+                const dateKey = Object.keys(newRecord).find(key => 
+                    dateColumns.includes(key) || 
+                    (key.toLowerCase().includes('date') && key !== 'Account_Creation_Date') // Exclude dim date
+                );
+
+                if (dateKey && newRecord[dateKey]) {
+                    const dateValue = newRecord[dateKey];
+                    // Clean up common international date formats before parsing
+                    const cleanedValue = dateValue.replace(/-/g, '/'); // Use slashes for better New Date() parsing
+
+                    const date = new Date(cleanedValue);
+                    if (!isNaN(date)) {
+                        // Convert to ISO string (YYYY-MM-DDTHH:MM:SS.000Z)
+                        newRecord[dateKey] = date.toISOString(); 
+                    } else {
+                        // Log a warning if a specific date failed to parse
+                        console.warn(`Date standardization failed for value: ${dateValue}`);
+                    }
+                }
+                return newRecord;
+            });
         };
 
 
-        /**
-         * Main function triggered by the button click.
-         */
-        // ----------------------------------------------------------------------
-        // Step 3: The JavaScript (Frontend) now talks to the Python (Backend)
-        // ----------------------------------------------------------------------
-        const PYTHON_API_URL = 'http://127.0.0.1:5000/unify'; 
+        // **********************************************************************
+        // ** MAIN PIPELINE FUNCTION (Modified to use standardizeDates) **
+        // **********************************************************************
 
-        const startUnification = async () => {
+        const processUnifyPipeline = async () => {
             if (isProcessing) return;
             isProcessing = true;
+            document.getElementById('button-text').textContent = 'Processing...';
             updateUnifyButtonState();
-            
-            allDataFrames = [];
-            document.getElementById('status-log').innerHTML = ''; // Clear log
-            
-            logStatus('Starting file parsing...', 'info');
+            logStatus('Starting unification pipeline...', 'info');
 
-            // 1. Preparation and Data Parsing (Still done in JavaScript)
-            const activeFiles = uploadedFiles.filter(f => f && f.sourceType !== 'SKIP');
-            
-            let filesToSend = [];
-            for (const file of activeFiles) {
-                try {
-                    // Use the existing JavaScript parsing logic to convert raw file content 
-                    // into a list of objects (JSON format)
-                    const { headers, data } = parseFile(file.content, file.fileFormat); 
-                    
-                    if (data.length > 0) {
-                        filesToSend.push({ 
-                            sourceType: file.sourceType,
-                            data: data // This list of objects will be sent to Pandas
-                        });
-                        logStatus(`Parsed ${file.file.name} successfully (${data.length} rows).`, 'success');
-                    } else {
-                        logStatus(`File ${file.file.name} resulted in 0 rows or failed parsing. Skipping.`, 'error');
-                    }
-                } catch (e) {
-                    logStatus(`Error parsing file ${file.file.name}: ${e.message}`, 'error');
-                }
-            }
-            
-            if (filesToSend.length === 0) {
-                logStatus('No successfully parsed data to send to Python server.', 'error');
-                isProcessing = false;
-                updateUnifyButtonState();
-                return;
-            }
-
-            logStatus('Sending prepared data to Python Flask API for processing...', 'info');
-
-            // 2. API Call: Send the data to the Python server (app.py)
             try {
+                // 1. Read and parse files
+                const selectedFiles = uploadedFiles.filter(f => f && f.file);
+                logStatus(`Reading and parsing ${selectedFiles.length} files...`);
+
+                const parsePromises = selectedFiles.map(async (f) => {
+                    const data = await readFileContent(f.file);
+                    logStatus(`Parsed ${f.file.name} successfully (${data.length} rows).`);
+                    return { sourceType: f.sourceType, data: data };
+                });
+
+                const parsedFiles = await Promise.all(parsePromises);
+
+                // 2. Prepare data for Python API
+                logStatus('Sending prepared data to Python Flask API for processing...');
+                
+                // --- CRITICAL CHANGE: Apply date standardization here ---
+                const dataToSend = {
+                    files: parsedFiles.map((file) => {
+                        let data = file.data;
+                        if (file.sourceType === 'CRM_SALES' || file.sourceType === 'FINANCE_LEDGER') {
+                            // Apply JS pre-processing to force ISO date format
+                            data = standardizeDates(file.data);
+                        }
+                        return {
+                            sourceType: file.sourceType,
+                            data: data
+                        };
+                    })
+                };
+                // --- END CRITICAL CHANGE ---
+
+                // 3. Call Python API
                 const response = await fetch(PYTHON_API_URL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ files: filesToSend })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dataToSend)
                 });
+
+                if (!response.ok) {
+                    const errorJson = await response.json();
+                    throw new Error(errorJson.error || `HTTP error! Status: ${response.status}`);
+                }
 
                 const result = await response.json();
 
-                if (!response.ok) {
-                    throw new Error(result.error || 'Unknown API error.');
-                }
+                if (result.status === 'success' && result.data) {
+                    const unifiedData = result.data;
+                    logStatus(`PIPELINE SUCCESS: Unified data received from Python server! (${unifiedData.length} records)`, 'success');
+                    
+                    if (unifiedData.length > 0) {
+                        const formatId = document.getElementById('output-format').value;
+                        exportUnifiedData(unifiedData, formatId);
+                    } 
 
-                // 3. Receive the unified data back from Python
-                const unifiedData = result.data; 
-                
-                logStatus('PIPELINE SUCCESS: Unified data received from Python server!', 'success');
-                
-                if (unifiedData && unifiedData.length > 0) {
-                    const formatId = document.getElementById('output-format').value;
-                    exportUnifiedData(unifiedData, formatId); // Use existing JS download function
                 } else {
-                    logStatus('Python processed data successfully, but returned an empty dataset.', 'error');
+                    throw new Error('Python server returned an unknown error.');
                 }
 
             } catch (error) {
-                // This error will trigger if the Python server (app.py) is not running!
-                logStatus(`CRITICAL ERROR: Could not connect to Python server. Is 'app.py' running? Details: ${error.message}`, 'error');
-                console.error('CRITICAL API ERROR:', error);
+                logStatus(`CRITICAL ERROR in pipeline: ${error.message}`, 'error');
+                console.error('CRITICAL ERROR:', error);
             } finally {
                 isProcessing = false;
+                document.getElementById('button-text').textContent = 'Unify & Download Data';
                 updateUnifyButtonState();
             }
         };
-        // ----------------------------------------------------------------------
-        // END of startUnification function replacement
-        // ----------------------------------------------------------------------
+
+        // **********************************************************************
+        // ** CSV/JSON EXPORT FUNCTIONS (No Change Required) **
+        // **********************************************************************
+
+        const convertToCsv = (data) => {
+            if (data.length === 0) return '';
+            const headers = Object.keys(data[0]);
+            const csv = [
+                headers.join(','), // Header row
+                ...data.map(row => headers.map(header => {
+                    const value = row[header];
+                    // Escape quotes and ensure complex values are quoted
+                    if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+                        return `"${value.replace(/"/g, '""')}"`;
+                    }
+                    return value;
+                }).join(','))
+            ].join('\n');
+            return csv;
+        };
+
+        const exportUnifiedData = (data, formatId) => {
+            let content;
+            let mimeType;
+            let extension;
+
+            if (formatId === 'csv') {
+                content = convertToCsv(data);
+                mimeType = 'text/csv';
+                extension = 'csv';
+            } else { // json
+                content = JSON.stringify(data, null, 2);
+                mimeType = 'application/json';
+                extension = 'json';
+            }
+            
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `unified_data_${new Date().toISOString().slice(0, 10)}.${extension}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            logStatus(`Data successfully exported as ${formatId.toUpperCase()}.`, 'success');
+        };
 
         /**
          * Initialization function to set up the UI.
